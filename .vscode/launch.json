@@ -1,0 +1,104 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "run_tracker_streaming",
+            "type": "python",
+            "request": "launch",
+            "program": "pytracking/run_tracker_streaming.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "keep_track",
+                "default",
+                "default",
+                "--dataset_name",
+                "esot2S",
+            ]
+        },
+        {
+            "name": "run_experiment_streaming",
+            "type": "python",
+            "request": "launch",
+            "program": "pytracking/run_experiment_streaming.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3"
+            },
+            "args": [
+                "myexperiments",
+                "esot500_fps_window_fe",
+                "default",
+                "--debug",
+                "0"
+            ]
+        },
+        {
+            "name": "run_experiment",
+            "type": "python",
+            "request": "launch",
+            "program": "pytracking/run_experiment.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3"
+            },
+            "args": [
+                "myexperiments",
+                "esot500_fps_window_fe",
+                "--debug",
+                "0"
+            ]
+        },
+        {
+            "name": "run_tracker",
+            "type": "python",
+            "request": "launch",
+            "program": "pytracking/run_tracker.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "args": [
+                "keep_track",
+                "default",
+                "--runid",
+                "9",
+                "--dataset_name",
+                "esot500S",
+                "--debug",
+                "0",
+                "--sequence",
+                "bag6"
+            ]
+        },
+        {
+            "name": "train",
+            "type": "python",
+            "request": "launch",
+            "program": "ltr/run_training.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "2"
+            },
+            "args": [
+                "dimp",
+                "prdimp18_fe240"
+            ]
+        }
+    ]
+}

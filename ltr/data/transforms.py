@@ -232,6 +232,23 @@ class Normalize(TransformBase):
     def transform_image(self, image):
         return tvisf.normalize(image, self.mean, self.std, self.inplace)
 
+class NormalizeVoxelGrid(TransformBase):
+    """Normalize voxel grid"""
+    def __init__(self, inplace=False):
+        super().__init__()
+        self.inplace = inplace
+    def transform_image(self, voxel_grid):
+        if not self.inplace:
+            voxel_grid = voxel_grid.clone()
+        mask = torch.nonzero(voxel_grid, as_tuple=True)
+        if mask[0].size()[0] > 0:
+            mean = voxel_grid[mask].mean()
+            std = voxel_grid[mask].std()
+            if std > 0:
+                voxel_grid[mask] = (voxel_grid[mask] - mean) / std
+            else:
+                voxel_grid[mask] = voxel_grid[mask] - mean
+        return voxel_grid
 
 class ToGrayscale(TransformBase):
     """Converts image to grayscale with probability"""

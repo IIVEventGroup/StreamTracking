@@ -164,7 +164,8 @@ class TrackingSampler(torch.utils.data.Dataset):
                            'test_images': test_frames,
                            'test_anno': test_anno['bbox'],
                            'dataset': dataset.get_name(),
-                           'test_class': meta_obj_test.get('object_class_name')})
+                        #    'test_class': meta_obj_test.get('object_class_name')
+                           })
 
         return self.processing(data)
 

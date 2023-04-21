@@ -7,7 +7,7 @@ from itertools import product
 from collections import OrderedDict
 from pytracking.evaluation import Sequence, Tracker
 from ltr.data.image_loader import imwrite_indexed
-
+import pickle
 
 PREDICTION_FIELD_NAMES = ['video', 'object', 'frame_num', 'present', 'score', 'xmin', 'xmax', 'ymin', 'ymax']
 
@@ -55,12 +55,21 @@ def _save_tracker_output_oxuva(seq: Sequence, tracker: Tracker, output: dict):
             writer.writerow(row)
 
 
-def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
+def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict, stream_setting=None):
     """Saves the output of the tracker."""
 
     if not os.path.exists(tracker.results_dir):
         os.makedirs(tracker.results_dir)
 
+    if seq.dataset in ['esot500s', 'esot2s']:
+        save_dir = os.path.join(tracker.results_dir_rt, str(stream_setting.id))
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        save_results_path_rt = os.path.join(save_dir,seq.name)
+        out_path= '{}.pkl'.format(save_results_path_rt)
+        pickle.dump(output, open(out_path, 'wb'))
+        return
+    
     base_results_path = os.path.join(tracker.results_dir, seq.name)
     segmentation_path = os.path.join(tracker.segmentation_dir, seq.name)
 
@@ -120,10 +129,13 @@ def _save_tracker_output(seq: Sequence, tracker: Tracker, output: dict):
                 imwrite_indexed(os.path.join(segmentation_path, '{}.png'.format(frame_name)), frame_seg)
 
 
-def run_sequence(seq: Sequence, tracker: Tracker, debug=False, visdom_info=None):
+def run_sequence(seq: Sequence, tracker: Tracker, stream_setting=None, debug=False, visdom_info=None):
     """Runs a tracker on a sequence."""
 
     def _results_exist():
+        if seq.dataset == 'esot500s':
+            bbox_file = '{}/{}.txt'.format(tracker.results_dir_rt, seq.name)
+            return os.path.isfile(bbox_file)
         if seq.dataset == 'oxuva':
             vid_id, obj_id = seq.name.split('_')[:2]
             pred_file = os.path.join(tracker.results_dir, '{}_{}.csv'.format(vid_id, obj_id))
@@ -155,14 +167,24 @@ def run_sequence(seq: Sequence, tracker: Tracker, debug=False, visdom_info=None)
 
     sys.stdout.flush()
 
-    if isinstance(output['time'][0], (dict, OrderedDict)):
-        exec_time = sum([sum(times.values()) for times in output['time']])
-        num_frames = len(output['time'])
-    else:
-        exec_time = sum(output['time'])
-        num_frames = len(output['time'])
+    if output.get('time'):
+        if isinstance(output['time'][0], (dict, OrderedDict)):
+            exec_time = sum([sum(times.values()) for times in output['time']])
+            num_frames = len(output['time'])
+        else:
+            exec_time = sum(output['time'])
+            num_frames = len(output['time'])
 
-    print('FPS: {}'.format(num_frames / exec_time))
+        print('FPS: {}'.format(num_frames / exec_time))
+    if output.get('runtime'):
+        if isinstance(output['runtime'][0], (dict, OrderedDict)):
+            exec_time = sum([sum(times.values()) for times in output['runtime']])
+            num_frames = len(output['runtime'])
+        else:
+            exec_time = sum(output['runtime'])
+            num_frames = len(output['runtime'])
+            avg_runtime = np.mean(output['runtime'])/1e3 # unit:ms
+        print('Average runtime: {} ms, FPS: {}'.format(avg_runtime,1000/avg_runtime))
 
     if not debug:
         if seq.dataset == 'oxuva':
@@ -170,6 +192,61 @@ def run_sequence(seq: Sequence, tracker: Tracker, debug=False, visdom_info=None)
         else:
             _save_tracker_output(seq, tracker, output)
 
+def run_sequence_stream(seq: Sequence, tracker: Tracker, stream_setting, debug=False, visdom_info=None):
+    """Runs a tracker on a sequence."""
+
+    def _results_exist():
+        if seq.dataset in ['esot500s','esot2s']:
+            bbox_file = '{}/{}.txt'.format(tracker.results_dir_rt, seq.name)
+            return os.path.isfile(bbox_file)
+        elif seq.object_ids is None:
+            bbox_file = '{}/{}.txt'.format(tracker.results_dir, seq.name)
+            return os.path.isfile(bbox_file)
+        else:
+            bbox_files = ['{}/{}_{}.txt'.format(tracker.results_dir, seq.name, obj_id) for obj_id in seq.object_ids]
+            missing = [not os.path.isfile(f) for f in bbox_files]
+            return sum(missing) == 0
+
+    visdom_info = {} if visdom_info is None else visdom_info
+
+    if _results_exist() and not debug:
+        print('FPS: {}'.format(-1))
+        return
+
+    print('Tracker: {} {} {} ,  Sequence: {}, Stream setting: {} '.format(tracker.name, tracker.parameter_name, tracker.run_id, seq.name, stream_setting.id))
+
+    if debug:
+        output = tracker.run_sequence(seq, stream_setting, debug=debug, visdom_info=visdom_info)
+    else:
+        try:
+            output = tracker.run_sequence(seq, stream_setting, debug=debug, visdom_info=visdom_info)
+        except Exception as e:
+            print(e)
+            return
+
+    sys.stdout.flush()
+
+    if output.get('time'):
+        if isinstance(output['time'][0], (dict, OrderedDict)):
+            exec_time = sum([sum(times.values()) for times in output['time']])
+            num_frames = len(output['time'])
+        else:
+            exec_time = sum(output['time'])
+            num_frames = len(output['time'])
+
+        print('FPS: {}'.format(num_frames / exec_time))
+    if output.get('runtime'):
+        if isinstance(output['runtime'][0], (dict, OrderedDict)):
+            exec_time = sum([sum(times.values()) for times in output['runtime']])
+            num_frames = len(output['runtime'])
+        else:
+            exec_time = sum(output['runtime'])
+            num_frames = len(output['runtime'])
+            avg_runtime = np.mean(output['runtime'])/1e3 # unit:ms
+        print('Average runtime: {} ms, FPS: {}'.format(avg_runtime,1000/avg_runtime))
+
+    if not debug:
+        _save_tracker_output(seq, tracker, output, stream_setting)
 
 def run_dataset(dataset, trackers, debug=False, threads=0, visdom_info=None):
     """Runs a list of trackers on a dataset.
@@ -199,6 +276,38 @@ def run_dataset(dataset, trackers, debug=False, threads=0, visdom_info=None):
                 run_sequence(seq, tracker_info, debug=debug, visdom_info=visdom_info)
     elif mode == 'parallel':
         param_list = [(seq, tracker_info, debug, visdom_info) for seq, tracker_info in product(dataset, trackers)]
+        with multiprocessing.Pool(processes=threads) as pool:
+            pool.starmap(run_sequence, param_list)
+    print('Done')
+
+def run_dataset_stream(dataset, trackers, stream_setting, debug=False, threads=0, visdom_info=None,):
+    """Runs a list of trackers on a dataset.
+    args:
+        dataset: List of Sequence instances, forming a dataset.
+        trackers: List of Tracker instances.
+        debug: Debug level.
+        threads: Number of threads to use (default 0).
+        visdom_info: Dict containing information about the server for visdom
+    """
+    multiprocessing.set_start_method('spawn', force=True)
+
+    print('Evaluating {:4d} trackers on {:5d} sequences'.format(len(trackers), len(dataset)))
+
+    multiprocessing.set_start_method('spawn', force=True)
+
+    visdom_info = {} if visdom_info is None else visdom_info
+
+    if threads == 0:
+        mode = 'sequential'
+    else:
+        mode = 'parallel'
+
+    if mode == 'sequential':
+        for seq in dataset:
+            for tracker_info in trackers:
+                run_sequence_stream(seq, tracker_info, stream_setting, debug=debug, visdom_info=visdom_info)
+    elif mode == 'parallel':
+        param_list = [(seq, tracker_info, stream_setting, debug, visdom_info) for seq, tracker_info in product(dataset, trackers)]
         with multiprocessing.Pool(processes=threads) as pool:
             pool.starmap(run_sequence, param_list)
     print('Done')

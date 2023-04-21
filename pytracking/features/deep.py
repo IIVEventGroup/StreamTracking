@@ -173,6 +173,7 @@ class ATOMResNet18(MultiFeatureBase):
 
         if self.use_gpu:
             self.net.cuda()
+            # self.net.to(torch.device('cuda'))
         self.net.eval()
 
         self.iou_predictor = self.net.bb_regressor

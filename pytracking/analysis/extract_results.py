@@ -57,6 +57,7 @@ def calc_seq_err_robust(pred_bb, anno_bb, dataset, target_visible=None):
                 pred_bb[i, :] = pred_bb[i-1, :]
 
     if pred_bb.shape[0] != anno_bb.shape[0]:
+        # 可以在这里加时间对齐
         if dataset == 'lasot':
             if pred_bb.shape[0] > anno_bb.shape[0]:
                 # For monkey-17, there is a mismatch for some trackers.

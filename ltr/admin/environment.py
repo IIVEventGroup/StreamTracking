@@ -25,6 +25,12 @@ def create_default_local_file():
         'msra10k_dir': empty_str,
         'davis_dir': empty_str,
         'youtubevos_dir': empty_str,
+        'fe240_dir':empty_str,
+        'visEvent_dir':empty_str,
+        'eventcarla_dir':empty_str,
+        'esot500_dir':empty_str,
+        'esot2_dir':empty_str,
+
         'lasot_candidate_matching_dataset_path': empty_str})
 
     comment = {'workspace_dir': 'Base directory for saving network checkpoints.',

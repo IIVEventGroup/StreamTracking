@@ -14,7 +14,13 @@ from ltr.data.bounding_box_utils import masks_to_bboxes
 from pytracking.evaluation.multi_object_wrapper import MultiObjectWrapper
 from pathlib import Path
 import torch
-
+from time import perf_counter
+from pytracking.utils.search import interpolation_search
+from pytracking.utils.convert_event_img import convert_event_img_aedat
+from dv import AedatFile
+import torchvision.transforms as T
+import cv2 as cv2
+transform = T.ToPILImage()
 
 _tracker_disp_colors = {1: (0, 255, 0), 2: (0, 0, 255), 3: (255, 0, 0),
                         4: (255, 255, 255), 5: (0, 0, 0), 6: (0, 255, 128),
@@ -54,9 +60,13 @@ class Tracker:
         env = env_settings()
         if self.run_id is None:
             self.results_dir = '{}/{}/{}'.format(env.results_path, self.name, self.parameter_name)
+            self.results_dir_rt = '{}/{}/{}'.format(env.results_path_rt, self.name, self.parameter_name)
+            self.results_dir_rt_final = '{}/{}/{}'.format(env.results_path_rt_final, self.name, self.parameter_name)
             self.segmentation_dir = '{}/{}/{}'.format(env.segmentation_path, self.name, self.parameter_name)
         else:
             self.results_dir = '{}/{}/{}_{:03d}'.format(env.results_path, self.name, self.parameter_name, self.run_id)
+            self.results_dir_rt = '{}/{}/{}_{:03d}'.format(env.results_path_rt, self.name, self.parameter_name,self.run_id)
+            self.results_dir_rt_final = '{}/{}/{}'.format(env.results_path_rt_final, self.name, self.parameter_name)
             self.segmentation_dir = '{}/{}/{}_{:03d}'.format(env.segmentation_path, self.name, self.parameter_name, self.run_id)
 
         tracker_module_abspath = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'tracker', self.name))
@@ -103,7 +113,7 @@ class Tracker:
         tracker.visdom = self.visdom
         return tracker
 
-    def run_sequence(self, seq, visualization=None, debug=None, visdom_info=None, multiobj_mode=None):
+    def run_sequence(self, seq, stream_setting=None, visualization=None, debug=None, visdom_info=None, multiobj_mode=None):
         """Run tracker on sequence.
         args:
             seq: Sequence to run the tracker on.
@@ -145,7 +155,10 @@ class Tracker:
         else:
             raise ValueError('Unknown multi object mode {}'.format(multiobj_mode))
 
-        output = self._track_sequence(tracker, seq, init_info)
+        if seq.dataset in ['esot500s','esot2s']:
+            output = self._track_evstream(tracker, seq, init_info, stream_setting)
+        else:
+            output = self._track_sequence(tracker, seq, init_info)
         return output
 
     def _track_sequence(self, tracker, seq, init_info):
@@ -255,6 +268,197 @@ class Tracker:
         output['image_shape'] = image.shape[:2]
         output['object_presence_score_threshold'] = tracker.params.get('object_presence_score_threshold', 0.55)
 
+        return output
+    
+    def _track_evstream(self, tracker, seq, init_info, stream_setting, **kwargs):
+        # Core Function
+        # Option: Fixed time window / #events / adaptive / model-based
+        # Option: Template Initialization Policy
+        # Option: Simulated / wall-clock runtime / #event-dependent
+        # Option: Event representation
+        # Option: Embedding latency counted / ignored
+
+        aeFile = seq.events
+        with AedatFile(aeFile) as f:
+            print('Processing:',aeFile)
+            events = np.hstack([packet for packet in f['events'].numpy()])
+            events['timestamp'] = events['timestamp'] -events['timestamp'][0]
+
+        timestamps = events['timestamp']
+        #TODO: adjust timestamps to seconds
+
+        eval_setting = {}
+
+        #init
+        pred_bboxes = []
+        in_timestamps = []
+        runtime = []
+        out_timestamps = []
+        t_stream_total = timestamps[-1] 
+
+        if not stream_setting.convert_time:
+            # Initialize
+            # t_start = perf_counter()*1e6
+            t_left = 0
+            if stream_setting.slicing == 'FxTime':
+                t_template = stream_setting.window_size
+                idx_end = interpolation_search(timestamps,t_template)
+            elif stream_setting.slicing == 'FxNum':
+                idx_end = stream_setting.num_events
+                t_template = timestamps[idx_end]
+            idx_start = 0
+            event_rep = convert_event_img_aedat(events[idx_start:idx_end],stream_setting.representation)
+            event_img_pil = transform(event_rep)
+            event_img_array = np.array(event_img_pil)
+            event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+            if tracker.params.visualization and self.visdom is None:
+                self.visualize(event_img, init_info.get('init_bbox'))
+            t1 = t_start = perf_counter()*1e6
+            out = tracker.initialize(event_img, init_info)
+            if out is None:
+                out = {}
+            prev_output = OrderedDict(out)
+            pred_bbox = init_info.get('init_bbox')
+            pred_bboxes.append(pred_bbox)
+            torch.cuda.synchronize()
+            t2 = perf_counter()*1e6
+            t_algo=t2-t1
+            if stream_setting.sim:
+                t_algo = np.random.normal(loc=stream_setting.sim_runtime, scale=stream_setting.sim_disturb, size=1)[0]
+            runtime.append(t_algo)
+            in_timestamps.append(stream_setting.window_size)
+            out_timestamps.append(t_algo+stream_setting.window_size)
+            while 1:
+                t_algo_total = sum(runtime) + t_template
+                if t_algo_total>t_stream_total:
+                    break
+                t_right = out_timestamps[-1] # Current world-time
+                idx_end = interpolation_search(timestamps,t_right)
+                if stream_setting.slicing == 'FxTime':
+                    t_left = t_right - stream_setting.window_size
+                    t_left = t_left if t_left >= timestamps[0] else timestamps[0]
+                    idx_start = interpolation_search(timestamps,t_left)
+                elif stream_setting.slicing == 'FxNum':
+                    idx_start = idx_end - stream_setting.num_events
+                    idx_start = max(idx_start, 0)
+                event_rep = convert_event_img_aedat(events[idx_start:idx_end],stream_setting.representation)
+                info = {} # changed
+                info['previous_output'] = prev_output
+                event_img_pil = transform(event_rep)
+                event_img_array = np.array(event_img_pil)
+                event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+                # cv2.imwrite('debug/test2.jpg',event_img)
+                # event_img.save('debug/test.jpg')
+                t1 = perf_counter()*1e6
+                out = tracker.track(event_img, info)
+
+                prev_output = OrderedDict(out)
+                torch.cuda.synchronize()
+                t2 = perf_counter()*1e6
+                t_algo=t2-t1
+                if stream_setting.sim:
+                    t_algo = np.random.normal(loc=stream_setting.sim_runtime, scale=stream_setting.sim_disturb, size=1)[0]
+                runtime.append(t_algo)
+                in_timestamps.append(out_timestamps[-1])
+                out_timestamps.append(out_timestamps[-1]+t_algo)
+                pred_bbox = out['target_bbox']
+                pred_bboxes.append(pred_bbox)
+
+                bboxes = [out['target_bbox']]
+                if 'clf_target_bbox' in out:
+                    bboxes.append(out['clf_target_bbox'])
+                if 'clf_search_area' in out:
+                    bboxes.append(out['clf_search_area'])
+                if 'segm_search_area' in out:
+                    bboxes.append(out['segm_search_area'])
+                segmentation = None
+                if self.visdom is not None:
+                    tracker.visdom_draw_tracking(event_img, bboxes, segmentation)
+                elif tracker.params.visualization:
+                    self.visualize(event_img, bboxes, segmentation)
+                    
+            output={
+                        'results_raw': pred_bboxes,
+                        'out_timestamps': out_timestamps,
+                        'in_timestamps': in_timestamps,
+                        'runtime': runtime,
+                        'stream_setting':stream_setting.id,
+                    }
+        else:
+            # Absolute wall time, including conversion time
+            t_start = perf_counter()*1e6
+            t_left = 0
+            t_right = stream_setting.window_size
+            t1 = perf_counter()*1e6
+            # idx_start = interpolation_search(timestamps,t_left)
+            idx_start = 0
+            idx_end = interpolation_search(timestamps,t_right) # merely zero
+            event_rep = convert_event_img_aedat(events[idx_start:idx_end],'VoxelGridComplex')
+            # event_img = transform(event_rep)
+            event_img_pil = transform(event_rep)
+            event_img_array = np.array(event_img_pil)
+            event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+            if tracker.params.visualization and self.visdom is None:
+                self.visualize(event_img, init_info.get('init_bbox'))
+
+            out = tracker.initialize(event_img, init_info)
+            if out is None:
+                out = {}
+            prev_output = OrderedDict(out)
+            torch.cuda.synchronize()
+            t2 = perf_counter()*1e6
+            t_elapsed=t2-t_start
+            pred_bbox = init_info.get('init_bbox')
+            pred_bboxes.append(pred_bbox)
+            # input_fidx.append(fidx)
+            in_timestamps.append(stream_setting.window_size)
+            out_timestamps.append(t_elapsed+stream_setting.window_size)
+            runtime.append(t2-t1)
+            while 1:
+                if convert_time:
+                    t1 = perf_counter()*1e6
+                    t_elapsed=t1-t_start
+                else:
+                    t_elapsed = sum(runtime)
+                if t_elapsed>t_stream_total:
+                    break
+                t_right = t_elapsed
+                t_left = t_elapsed - stream_setting.window_size
+                idx_start = interpolation_search(timestamps,t_left)
+                idx_end = interpolation_search(timestamps,t_right)
+                event_rep = convert_event_img_aedat(events[idx_start:idx_end],'VoxelGridComplex')
+                info = {} # changed
+                info['previous_output'] = prev_output
+                event_img_pil = transform(event_rep)
+                event_img_array = np.array(event_img_pil)
+                event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+                if not convert_time:
+                    t1 = perf_counter()*1e6
+                out = tracker.track(event_img, info)
+                prev_output = OrderedDict(out)
+                torch.cuda.synchronize()
+                t2 = perf_counter()*1e6
+                t_elapsed=t2-t_start
+                in_timestamps.append(t_right)
+                out_timestamps.append(t_elapsed)
+                runtime.append(t2-t1)
+                pred_bbox = out['target_bbox']
+                pred_bboxes.append(pred_bbox)
+                # input_fidx.append(fidx)
+                if t_elapsed>t_stream_total:
+                    break
+                bboxes = out['target_bbox']
+                segmentation = None
+                if self.visdom is not None:
+                    tracker.visdom_draw_tracking(event_img, bboxes, segmentation)
+                elif tracker.params.visualization:
+                    self.visualize(event_img, bboxes, segmentation)
+            output={
+                        'results_raw': pred_bboxes,
+                        'out_timestamps': out_timestamps,
+                        'in_timestamps': in_timestamps,
+                        'runtime': runtime,
+                    }
         return output
 
     def run_video_generic(self, debug=None, visdom_info=None, videofilepath=None, optional_box=None, save_results=False):
