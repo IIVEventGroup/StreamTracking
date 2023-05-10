@@ -197,7 +197,7 @@ def run_sequence_stream(seq: Sequence, tracker: Tracker, stream_setting, debug=F
 
     def _results_exist():
         if seq.dataset in ['esot500s','esot2s']:
-            bbox_file = '{}/{}.txt'.format(tracker.results_dir_rt, seq.name)
+            bbox_file = '{}/{}/{}.pkl'.format(tracker.results_dir_rt, stream_setting.id, seq.name)
             return os.path.isfile(bbox_file)
         elif seq.object_ids is None:
             bbox_file = '{}/{}.txt'.format(tracker.results_dir, seq.name)

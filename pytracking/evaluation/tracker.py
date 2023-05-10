@@ -20,6 +20,7 @@ from pytracking.utils.convert_event_img import convert_event_img_aedat
 from dv import AedatFile
 import torchvision.transforms as T
 import cv2 as cv2
+import importlib
 transform = T.ToPILImage()
 
 _tracker_disp_colors = {1: (0, 255, 0), 2: (0, 0, 255), 3: (255, 0, 0),
@@ -39,6 +40,10 @@ def trackerlist(name: str, parameter_name: str, run_ids = None, display_name: st
         run_ids = [run_ids]
     return [Tracker(name, parameter_name, run_id, display_name) for run_id in run_ids]
 
+def load_sampling_func(func:str):
+    expr_module = importlib.import_module('pytracking.utils.sampling')
+    func  = getattr(expr_module, func)
+    return func
 
 class Tracker:
     """Wraps the tracker for evaluation and running purposes.
@@ -271,12 +276,15 @@ class Tracker:
         return output
     
     def _track_evstream(self, tracker, seq, init_info, stream_setting, **kwargs):
-        # Core Function
-        # Option: Fixed time window / #events / adaptive / model-based
-        # Option: Template Initialization Policy
-        # Option: Simulated / wall-clock runtime / #event-dependent
-        # Option: Event representation
-        # Option: Embedding latency counted / ignored
+        """
+        Core Function
+        stream_setting:
+            Option: Fixed time window / #events / adaptive / model-based
+            Option: Template Initialization Policy
+            Option: Simulated / wall-clock runtime / #event-dependent
+            Option: Event representation
+            Option: Embedding latency counted / ignored
+        """
 
         aeFile = seq.events
         with AedatFile(aeFile) as f:
@@ -300,21 +308,52 @@ class Tracker:
             # Initialize
             # t_start = perf_counter()*1e6
             t_left = 0
-            if stream_setting.slicing == 'FxTime':
-                t_template = stream_setting.window_size
-                idx_end = interpolation_search(timestamps,t_template)
-            elif stream_setting.slicing == 'FxNum':
-                idx_end = stream_setting.num_events
-                t_template = timestamps[idx_end]
             idx_start = 0
-            event_rep = convert_event_img_aedat(events[idx_start:idx_end],stream_setting.representation)
-            event_img_pil = transform(event_rep)
-            event_img_array = np.array(event_img_pil)
-            event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+
+            # ============== Initialization ====================
+            if stream_setting.template_ == 'default':
+                if stream_setting.slicing == 'FxTime':
+                    t_template = stream_setting.window_size
+                    idx_end = interpolation_search(timestamps,t_template)
+                elif stream_setting.slicing == 'FxNum':
+                    idx_end = stream_setting.num_events
+                    t_template = timestamps[idx_end]
+                elif stream_setting.slicing == 'Last':
+                    t_template = init_info.get('init_timestamp')*1e6
+                    idx_end = interpolation_search(timestamps,t_template)
+                elif stream_setting.slicing == 'Adaptive':
+                    from pytracking.utils.sampling import EventStreamSampler
+                    stream_sampler = EventStreamSampler()
+                    idx_end, t_template = stream_sampler.init_with_template(events, init_info, stream_setting)
+                    # t_template = stream_setting.window_size_template # TODO: use first timestamp
+                    # idx_end = interpolation_search(timestamps,t_template)
+                template_events = events[idx_start:idx_end]
+            elif stream_setting.template_ == 'seperate':
+                    t_template = stream_setting.window_size_template
+                    idx_end = interpolation_search(timestamps,t_template)
+                    template_events = events[idx_start:idx_end]
+            elif stream_setting.template_ == 'egt':
+                    from pytracking.utils.sampling import sampling_template_egt, sampling_search_egt
+                    t_template = init_info.get('init_timestamp')*1e6
+                    idx_end = interpolation_search(timestamps,t_template)
+                    template_events_raw = events[idx_start:idx_end]
+                    template_events = sampling_template_egt(events, init_info)
+            else:
+                raise NotImplementedError
+            event_rep = convert_event_img_aedat(template_events,stream_setting.representation)
+            # event_img_pil = transform(event_rep)
+            # event_img_array = np.array(event_img_pil)
+            # event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
             if tracker.params.visualization and self.visdom is None:
-                self.visualize(event_img, init_info.get('init_bbox'))
+                if stream_setting.representation in ['VoxelGridComplex']:
+                    event_img = event_rep
+                    self.visualize(event_img, init_info.get('init_bbox'))
+                elif stream_setting.representation in ['Raw']:
+                    event_img = convert_event_img_aedat(template_events_raw,'VoxelGridComplex')
+                    self.visualize(event_img, init_info.get('init_bbox'))
+            torch.cuda.synchronize()
             t1 = t_start = perf_counter()*1e6
-            out = tracker.initialize(event_img, init_info)
+            out = tracker.initialize(event_rep, init_info)
             if out is None:
                 out = {}
             prev_output = OrderedDict(out)
@@ -322,12 +361,23 @@ class Tracker:
             pred_bboxes.append(pred_bbox)
             torch.cuda.synchronize()
             t2 = perf_counter()*1e6
-            t_algo=t2-t1
+            t_algo_init=t2-t1
+            t_algo_init = out.get('time') * 1e6 if out.get('time') else t_algo_init
+            # t_algo = out.get('time',t_algo)
             if stream_setting.sim:
-                t_algo = np.random.normal(loc=stream_setting.sim_runtime, scale=stream_setting.sim_disturb, size=1)[0]
-            runtime.append(t_algo)
-            in_timestamps.append(stream_setting.window_size)
-            out_timestamps.append(t_algo+stream_setting.window_size)
+                sim_runtime = stream_setting.sim_runtime_init.get(self.name+'_'+self.parameter_name,stream_setting.sim_runtime_rt)
+                sim_disturb = sim_runtime * stream_setting.sim_disturb
+                t_algo_init = np.random.normal(loc=sim_runtime, scale=sim_disturb, size=1)[0]
+            if stream_setting.init_time == False:
+                sim_runtime = stream_setting.sim_runtime.get(self.name+'_'+self.parameter_name,stream_setting.sim_runtime_rt)
+                sim_disturb = sim_runtime * stream_setting.sim_disturb
+                t_algo_init = np.random.normal(loc=sim_runtime, scale=sim_disturb, size=1)[0]
+            # print(t_algo/1e6)
+            runtime.append(t_algo_init)
+            in_timestamps.append(t_template)
+            out_timestamps.append(t_algo_init+t_template)
+            
+            # =================== Tracking =====================
             while 1:
                 t_algo_total = sum(runtime) + t_template
                 if t_algo_total>t_stream_total:
@@ -341,28 +391,48 @@ class Tracker:
                 elif stream_setting.slicing == 'FxNum':
                     idx_start = idx_end - stream_setting.num_events
                     idx_start = max(idx_start, 0)
-                event_rep = convert_event_img_aedat(events[idx_start:idx_end],stream_setting.representation)
+                elif stream_setting.slicing in ['Last','egt']:
+                    t_left = in_timestamps[-1]
+                    idx_start = interpolation_search(timestamps,t_left)
+                elif stream_setting.slicing == 'Adaptive':
+                    idx_start, t_left = stream_sampler.sample(events[:idx_end], pred_bboxes, stream_setting)
+                    # sampling = load_sampling_func(stream_setting.adaptive_)
+                    # idx_start, t_left  = sampling(events[:idx_end], pred_bboxes, stream_setting)
+                events_search = events[idx_start:idx_end]
+                slicing_ = stream_setting.get('slicing_', None)
+                if slicing_ and slicing_ in ['egt']:
+                    # convert format for egt
+                    event_rep = sampling_search_egt(events_search)
+                else:
+                    event_rep = convert_event_img_aedat(events_search,stream_setting.representation)
                 info = {} # changed
                 info['previous_output'] = prev_output
-                event_img_pil = transform(event_rep)
-                event_img_array = np.array(event_img_pil)
-                event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+
+                # event_img_pil = transform(event_rep)
+                # event_img_array = np.array(event_img_pil)
+                # event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
                 # cv2.imwrite('debug/test2.jpg',event_img)
                 # event_img.save('debug/test.jpg')
                 t1 = perf_counter()*1e6
-                out = tracker.track(event_img, info)
+                out = tracker.track(event_rep, info)
 
                 prev_output = OrderedDict(out)
                 torch.cuda.synchronize()
                 t2 = perf_counter()*1e6
                 t_algo=t2-t1
+                # t_algo = out.get('time',t_algo)
+                t_algo = out.get('time') * 1e6 if out.get('time') else t_algo
                 if stream_setting.sim:
-                    t_algo = np.random.normal(loc=stream_setting.sim_runtime, scale=stream_setting.sim_disturb, size=1)[0]
+                    sim_runtime = stream_setting.sim_runtime.get(self.name+'_'+self.parameter_name,stream_setting.sim_runtime_rt)
+                    sim_disturb = sim_runtime * stream_setting.sim_disturb
+                    t_algo = np.random.normal(loc=sim_runtime, scale=sim_disturb, size=1)[0]
                 runtime.append(t_algo)
+                # print(t_algo/1e6)
                 in_timestamps.append(out_timestamps[-1])
                 out_timestamps.append(out_timestamps[-1]+t_algo)
                 pred_bbox = out['target_bbox']
-                pred_bboxes.append(pred_bbox)
+                # print('target_bbox:', pred_bbox)
+                pred_bboxes.append(pred_bbox) # box [x1, y1, w, h]
 
                 bboxes = [out['target_bbox']]
                 if 'clf_target_bbox' in out:
@@ -372,6 +442,10 @@ class Tracker:
                 if 'segm_search_area' in out:
                     bboxes.append(out['segm_search_area'])
                 segmentation = None
+                if stream_setting.representation in ['VoxelGridComplex']:
+                    event_img = event_rep
+                elif stream_setting.representation =='Raw':
+                    event_img = convert_event_img_aedat(events_search, 'VoxelGridComplex')
                 if self.visdom is not None:
                     tracker.visdom_draw_tracking(event_img, bboxes, segmentation)
                 elif tracker.params.visualization:
@@ -385,6 +459,7 @@ class Tracker:
                         'stream_setting':stream_setting.id,
                     }
         else:
+            # TODO: under-construction
             # Absolute wall time, including conversion time
             t_start = perf_counter()*1e6
             t_left = 0
@@ -415,7 +490,7 @@ class Tracker:
             out_timestamps.append(t_elapsed+stream_setting.window_size)
             runtime.append(t2-t1)
             while 1:
-                if convert_time:
+                if stream_setting.convert_time:
                     t1 = perf_counter()*1e6
                     t_elapsed=t1-t_start
                 else:
@@ -432,7 +507,7 @@ class Tracker:
                 event_img_pil = transform(event_rep)
                 event_img_array = np.array(event_img_pil)
                 event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
-                if not convert_time:
+                if not stream_setting.convert_time:
                     t1 = perf_counter()*1e6
                 out = tracker.track(event_img, info)
                 prev_output = OrderedDict(out)

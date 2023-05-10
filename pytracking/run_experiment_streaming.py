@@ -17,7 +17,7 @@ def load_stream_setting(stream_setting):
     params = param_module.parameters()
     return params
 
-def run_experiment_stream(experiment_module: str, experiment_name: str, stream_setting, debug=0, threads=0, run_id=None, visdom_info=None):
+def run_experiment_stream(experiment_module: str, experiment_name: str, debug=0, threads=0, run_id=None, visdom_info=None):
     """Run experiment.
     args:
         experiment_module: Name of experiment module in the experiments/ folder.
@@ -25,32 +25,27 @@ def run_experiment_stream(experiment_module: str, experiment_name: str, stream_s
         debug: Debug level.
         threads: Number of threads.
     """
-    visdom_info = {} if visdom_info is None else visdom_info
-    trackers =  trackerlist('atom', 'default', run_id) + \
-                trackerlist('dimp', 'dimp18', run_id) + \
-                trackerlist('dimp', 'prdimp18', run_id) +\
-                trackerlist('kys', 'default', run_id) + \
-                trackerlist('rts', 'rts50', run_id) + \
-                trackerlist('keep_track','default',run_id)
-    dataset = get_dataset('esot2s')
-    
-    print('Running:  {}  {}'.format(experiment_module, experiment_name))
-    
-    stream_setting = load_stream_setting(stream_setting) # dict
-    run_dataset_stream(dataset, trackers, stream_setting, debug, threads, visdom_info=visdom_info )
+    expr_module = importlib.import_module('pytracking.experiments.{}'.format(experiment_module))
+    expr_func = getattr(expr_module, experiment_name)
+    trackers, dataset, stream_setting = expr_func()
+    # stream_setting = load_stream_setting(stream_setting) # dict
+
+    print('Running:  {}  {}  with Streaming setting {}'.format(experiment_module, experiment_name, stream_setting.id))
+
+    run_dataset_stream(dataset, trackers, stream_setting, debug, threads, visdom_info=visdom_info)
 
 
 def main():
     parser = argparse.ArgumentParser(description='Run tracker.')
     parser.add_argument('experiment_module', type=str, help='Name of experiment module in the experiments/ folder.')
     parser.add_argument('experiment_name', type=str, help='Name of the experiment function.')
-    parser.add_argument('stream_setting', type=str, help='Name of stream_setting file.')
+    # parser.add_argument('stream_setting', type=str, help='Name of stream_setting file.')
     parser.add_argument('--debug', type=int, default=0, help='Debug level.')
     parser.add_argument('--threads', type=int, default=0, help='Number of threads.')
 
     args = parser.parse_args()
     
-    run_experiment_stream(args.experiment_module, args.experiment_name, args.stream_setting, args.debug, args.threads)
+    run_experiment_stream(args.experiment_module, args.experiment_name, args.debug, args.threads)
 
 
 if __name__ == '__main__':

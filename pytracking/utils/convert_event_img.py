@@ -2,7 +2,19 @@ import numpy as np
 import torch
 from pytracking.utils.event_utils_new import events_to_neg_pos_voxel_torch, events_to_voxel_torch
 
-def convert_event_img_aedat(events, style):
+import cv2 as cv2
+import torchvision.transforms as T
+transform = T.ToPILImage()
+def to_img(event_rep):
+    import cv2
+    import torchvision.transforms as T
+    transform = T.ToPILImage()
+    event_img_pil = transform(event_rep)
+    event_img_array = np.array(event_img_pil)
+    event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+    return event_img
+
+def convert_event_img_aedat(events, style, with_img_return = False):
     """
     events: aedat4 events
     """
@@ -54,7 +66,11 @@ def convert_event_img_aedat(events, style):
         sensor_size = (260,346)
         temporal_bilinear = True
         voxel_complex = events_to_voxel_torch(xs, ys, ts, ps, B, device, sensor_size,temporal_bilinear)
-        return voxel_complex # (3, H, W)
+        event_img_pil = transform(voxel_complex)
+        # event_img_pil.save('debug/test.jpg')
+        event_img_array = np.array(event_img_pil)
+        event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+        return event_img # (3, H, W)
 
     elif style == 'TimeSurface':
         raise NotImplementedError
@@ -70,9 +86,13 @@ def convert_event_img_aedat(events, style):
         dvs_img.index_put_((y , x ),value,accumulate=False)
 
         raise NotImplemented
+    elif style == 'Raw':
+        return events
+
     else:
         raise NotImplemented
-
+        
+        
     return dvs_img
 
 def convert_event_img_carla(events, resolution:tuple, style):

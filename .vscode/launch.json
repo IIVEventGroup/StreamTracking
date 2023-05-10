@@ -19,12 +19,25 @@
             "program": "pytracking/run_tracker_streaming.py",
             "console": "integratedTerminal",
             "justMyCode": true,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3"
+            },
             "args": [
-                "keep_track",
-                "default",
-                "default",
+                // "keep_track",
+                // "default",
+                // "s8",
+                "egt",
+                "egt",
+                "egt",
                 "--dataset_name",
-                "esot2S",
+                "esot500S",
+                // "--sequence",
+                // "person-2021_09_24_00_02_23_s",
+                // "book3_s",
+                "--debug",
+                "1",
+                "--use_visdom",
+                "0",
             ]
         },
         {
@@ -38,9 +51,8 @@
                 "CUDA_VISIBLE_DEVICES": "3"
             },
             "args": [
-                "myexperiments",
-                "esot500_fps_window_fe",
-                "default",
+                "exp_streaming",
+                "streaming_7",
                 "--debug",
                 "0"
             ]
@@ -73,16 +85,16 @@
                 "CUDA_VISIBLE_DEVICES": "2"
             },
             "args": [
-                "keep_track",
-                "default",
+                "egt",
+                "egt",
                 "--runid",
                 "9",
                 "--dataset_name",
-                "esot500S",
+                "esot_20_8",
                 "--debug",
-                "0",
-                "--sequence",
-                "bag6"
+                "1",
+                // "--sequence",
+                // "bag6"
             ]
         },
         {

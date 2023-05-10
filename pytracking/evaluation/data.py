@@ -226,19 +226,26 @@ class SequenceEvent:
         return init_data
     
     def _construct_init_data_t(self, init_data=None):
-        init_data = {0: dict()}     # Assume start from frame 0
+        init_data_t = {0: dict()}     # Assume start from frame 0
 
         if self.ground_truth_t is not None:
             assert self.object_ids is None or len(self.object_ids) == 1
             if isinstance(self.ground_truth_t, (dict, OrderedDict)):
-                init_data[0]['bbox'] = list(self.ground_truth_t[self.object_ids[0]][0, :])
+                init_data_t[0]['bbox'] = list(self.ground_truth_t[self.object_ids[0]][0, 1:])
+                init_data_t[0]['timestamp'] = self.ground_truth_t[self.object_ids[0]][0, 0]
             else:
-                init_data[0]['bbox'] = list(self.ground_truth_t[0,:]) 
-        return init_data
+                init_data_t[0]['bbox'] = list(self.ground_truth_t[0,1:])
+                init_data_t[0]['timestamp'] = self.ground_truth_t[0,0]
+
+        return init_data_t
 
     def init_info(self):
         info = self.frame_info(frame_num=0)
         return info
+
+    def init_info_t(self):
+        info_t = self.frame_info_t(frame_num=0)
+        return info_t
 
     def frame_info(self, frame_num):
         info = self.object_init_data(frame_num=frame_num)
@@ -270,11 +277,11 @@ class SequenceEvent:
     def object_init_data(self, frame_num=None) -> dict:
         if frame_num is None:
             frame_num = 0
-        if frame_num not in self.init_data:
+        if frame_num not in self.init_data_t:
             return dict()
 
         init_data = dict()
-        for key, val in self.init_data[frame_num].items():
+        for key, val in self.init_data_t[frame_num].items(): # changed to self.init_data_t to include timestamp 
             if val is None:
                 continue
             init_data['init_'+key] = val

@@ -111,12 +111,3 @@ def esot2_interp_fe():
     dataset = get_dataset('esot2_2_20','esot2_default','esot2_5_20','esot2_10_20','esot2_2_100','esot2_5_100','esot2_10_100')
     return trackers, dataset
 
-def esot2_streaming_1():
-    trackers =  trackerlist('atom', 'default') + \
-                trackerlist('dimp', 'dimp18') + \
-                trackerlist('dimp', 'prdimp18') +\
-                trackerlist('kys', 'default') + \
-                trackerlist('rts','rts50')
-    dataset = get_dataset('esot2s')
-    stream_setting = load_stream_setting('default')
-    return trackers, dataset, stream_setting

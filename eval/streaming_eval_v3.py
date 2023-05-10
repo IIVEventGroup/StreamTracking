@@ -34,8 +34,6 @@ def find_last_pred(gt_t, pred_raw):
     return pred_last_result
 
 def stream_eval(gt_anno_t:list, raw_result:dict):
-    # TODO check correctness if raw result is more than gt
-
     pred_final = []
     for line in gt_anno_t:
         gt_t = line[0]
@@ -50,13 +48,17 @@ def eval_sequence_stream(sequence, tracker, stream_setting):
     tracker_name = tracker.name
     param = tracker.parameter_name
     gt_anno_t = sequence.ground_truth_t
+    save_dir = os.path.join(tracker.results_dir_rt_final,str(stream_setting.id))
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    if os.path.exists(os.path.join(save_dir, sequence.name+'.txt')):
+        print('Already exists. Skipped. ')
+        return
+
     raw_result = pickle.load(open(os.path.join(tracker.results_dir_rt, str(stream_setting.id), sequence.name+'.pkl'), 'rb'))
     assert raw_result['stream_setting'] == stream_setting.id
     pred_final = stream_eval(gt_anno_t, raw_result)
 
-    save_dir = os.path.join(tracker.results_dir_rt_final,str(stream_setting.id))
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
     np.savetxt('{}/{}.txt'.format(save_dir,sequence.name),pred_final,fmt='%d',delimiter='\t')
 
     

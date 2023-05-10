@@ -1,7 +1,7 @@
 
 def interpolation_search(arr, target):
     """returns the left boundary of target"""
-    target = target-1
+    target = target
     low = 0
     high = len(arr) - 1
     # pos = 0

@@ -47,9 +47,9 @@ class PostKalmanFilter(object):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--raw_root', default='/home/test4/code/EventBenchmark/lib/pytracking/pytracking/tracking_results_rt_raw',type=str,
+    parser.add_argument('--raw_root', default='/home/test4/code/EventBenchmark/lib/pytracking/pytracking/output/tracking_results_rt_raw',type=str,
         help='raw result root')
-    parser.add_argument('--target_root', default='/home/test4/code/EventBenchmark/lib/pytracking/pytracking/results_rt_postKF_500_w2ms',type=str,
+    parser.add_argument('--target_root', default='/home/test4/code/EventBenchmark/lib/pytracking/pytracking/output/results_rt_postKF_500_w2ms',type=str,
         help='target result root')
     parser.add_argument('--gt_root',default='/home/test4/code/EventBenchmark/data/EventSOT/EventSOT500/EventSOT500/anno_t/', type=str)
     # parser.add_argument('--fps', type=float, default=30)
