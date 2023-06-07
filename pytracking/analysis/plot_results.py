@@ -121,14 +121,14 @@ def plot_draw_save(y, x, scores, trackers, plot_draw_styles, result_plot_path, p
     xlim = plot_opts['xlim']
     ylim = plot_opts['ylim']
 
-    title = plot_opts['title']
+    # title = plot_opts['title']
 
     matplotlib.rcParams.update({'font.size': font_size})
     matplotlib.rcParams.update({'axes.titlesize': font_size_axis})
     matplotlib.rcParams.update({'axes.titleweight': 'black'})
     matplotlib.rcParams.update({'axes.labelsize': font_size_axis})
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6,6))
 
     index_sort = scores.argsort(descending=False)
 
@@ -146,15 +146,17 @@ def plot_draw_save(y, x, scores, trackers, plot_draw_styles, result_plot_path, p
         tracker = trackers[id_sort]
         disp_name = get_tracker_display_name(tracker)
 
-        legend_text.append('{} [{:.1f}]'.format(disp_name, scores[id_sort]))
+        # legend_text.append('{} [{:.1f}]'.format(disp_name, scores[id_sort]))
+        legend_text.append('{} [{:.1f}]'.format(disp_name))
 
-    ax.legend(plotted_lines[::-1], legend_text[::-1], loc=legend_loc, fancybox=False, edgecolor='black',
+
+    fig.legend(plotted_lines[::-1], legend_text[::-1],bbox_to_anchor=(1.05, 1.0), loc=legend_loc, fancybox=False, edgecolor='black',
               fontsize=font_size_legend, framealpha=1.0)
 
     ax.set(xlabel=xlabel,
            ylabel=ylabel,
            xlim=xlim, ylim=ylim,
-           title=title)
+           )
 
     ax.grid(True, linestyle='-.')
     fig.tight_layout()
@@ -206,6 +208,151 @@ def get_prec_curve(ave_success_rate_plot_center, valid_sequence):
 
     return prec_curve, prec_score
 
+def plot_results_mod(trackers, dataset, report_name, merge_results=False,
+                 plot_types=('success'), force_evaluation=False, **kwargs):
+    """
+    Plot results for the given trackers
+
+    args:
+        trackers - List of trackers to evaluate
+        dataset - List of sequences to evaluate
+        report_name - Name of the folder in env_settings.perm_mat_path where the computed results and plots are saved
+        merge_results - If True, multiple random runs for a non-deterministic trackers are averaged
+        plot_types - List of scores to display. Can contain 'success',
+                    'prec' (precision), and 'norm_prec' (normalized precision)
+    """
+    # Load data
+    settings = env_settings()
+
+    plot_draw_styles = get_plot_draw_styles()
+
+    # Load pre-computed results
+    result_plot_path = os.path.join(settings.result_plot_path, report_name)
+    eval_data = check_and_load_precomputed_results(trackers, dataset, report_name, force_evaluation, **kwargs)
+
+    # Merge results from multiple runs
+    if merge_results:
+        eval_data = merge_multiple_runs(eval_data)
+
+    tracker_names = eval_data['trackers']
+    tracker_disp_names = [x['disp_name'] for x in tracker_names]
+
+    valid_sequence = torch.tensor(eval_data['valid_sequence'], dtype=torch.bool)
+
+    print('\nPlotting results over {} / {} sequences'.format(valid_sequence.long().sum().item(), valid_sequence.shape[0]))
+
+    print('\nGenerating plots for: {}'.format(report_name))
+
+    # ********************************  Success Plot **************************************
+
+    ave_success_rate_plot_overlap = torch.tensor(eval_data['ave_success_rate_plot_overlap'])
+
+    # Index out valid sequences
+    auc_curve, auc = get_auc_curve(ave_success_rate_plot_overlap, valid_sequence)
+    threshold_set_overlap = torch.tensor(eval_data['threshold_set_overlap'])
+
+    plot_opts = {'plot_type': 'precision', 'legend_loc': 'lower right',
+                            # 'xlabel': 'Location error threshold [pixels]', 'ylabel': 'Distance Precision [%]',
+                            'xlim': (0, 50), 'ylim': (0, 100)}
+    
+    font_size = plot_opts.get('font_size', 12)
+    font_size_axis = plot_opts.get('font_size_axis', 13)
+    line_width = plot_opts.get('line_width', 2)
+    font_size_legend = plot_opts.get('font_size_legend', 13)
+
+    plot_type = plot_opts['plot_type']
+    # legend_loc = plot_opts['legend_loc']
+
+    # xlabel = plot_opts['xlabel']
+    # ylabel = plot_opts['ylabel']
+    xlim = plot_opts['xlim']
+    ylim = plot_opts['ylim']
+
+    # title = plot_opts['title']
+
+    matplotlib.rcParams.update({'font.size': font_size})
+    matplotlib.rcParams.update({'axes.titlesize': font_size_axis})
+    matplotlib.rcParams.update({'axes.titleweight': 'black'})
+    matplotlib.rcParams.update({'axes.labelsize': font_size_axis})
+
+    fig, ax = plt.subplots(1,2,figsize=(8,5))
+
+    ######################### Success Plot ############################
+
+
+    plotted_lines = []
+    legend_text = []
+    map_tracker_line = {tracker: line for tracker,line in zip(tracker_disp_names,plot_draw_styles)}
+
+    for id, tracker in enumerate(tracker_disp_names):
+        line = ax[0].plot(threshold_set_overlap.tolist(), auc_curve[id, :].tolist(),
+                       linewidth=line_width,
+                       color=map_tracker_line[tracker]['color'],
+                       linestyle=map_tracker_line[tracker]['line_style'])
+
+        plotted_lines.append(line[0])
+
+        tracker_eval = tracker_names[id]
+        disp_name = get_tracker_display_name(tracker_eval)
+
+        # legend_text.append('{} [{:.1f}]'.format(disp_name, scores[id_sort]))
+        legend_text.append('{}'.format(disp_name))
+
+
+    # fig.legend(plotted_lines[::-1], legend_text[::-1],bbox_to_anchor=(1.05, 1.0), loc=legend_loc, fancybox=False, edgecolor='black',
+    #           fontsize=font_size_legend, framealpha=1.0)
+
+    ax[0].set(xlabel='Overlap threshold',
+           ylabel='Success Rate [%]',
+           xlim=(0, 1.0), ylim=(0, 100),
+           )
+    ax[0].grid(True, linestyle='-.')
+
+    ############################# Precion Plot #####################################
+
+    ave_success_rate_plot_center = torch.tensor(eval_data['ave_success_rate_plot_center'])
+
+    # Index out valid sequences
+    prec_curve, prec_score = get_prec_curve(ave_success_rate_plot_center, valid_sequence)
+    threshold_set_center = torch.tensor(eval_data['threshold_set_center'])
+    # index_sort_prec = prec_score.argsort(descending=False)
+
+    # plotted_lines = []
+    legend_text = []
+
+    for id, tracker in enumerate(tracker_disp_names):
+        line = ax[1].plot(threshold_set_center.tolist(), prec_curve[id, :].tolist(),
+                       linewidth=line_width,
+                       color=map_tracker_line[tracker]['color'],
+                       linestyle=map_tracker_line[tracker]['line_style'],
+                       label = disp_name)
+
+        tracker_eval = tracker_names[id]
+        disp_name = get_tracker_display_name(tracker_eval)
+
+        # plotted_lines.append(line[0])
+
+        # tracker = trackers[id_sort]
+
+        # legend_text.append('{} [{:.1f}]'.format(disp_name, scores[id_sort]))
+        legend_text.append('{}'.format(disp_name))
+
+
+    ax[1].set(xlabel='Location error threshold [pixels]',
+           ylabel='Distance Precision [%]',
+           xlim=(0, 50), ylim=(0, 100),
+           )
+    ax[1].grid(True, linestyle='-.')
+
+    # ax[1].legend(plotted_lines[::-1], legend_text[::-1],bbox_to_anchor=(1.05, 0.00), loc='lower left', fancybox=False, edgecolor='black',
+    #           fontsize=font_size_legend, framealpha=1.0)
+    
+    fig.tight_layout()
+    plot_type = 'combined'
+    tikzplotlib.save('{}/{}_plot.tex'.format(result_plot_path, plot_type))
+    fig.savefig('{}/{}_plot.pdf'.format(result_plot_path, plot_type), dpi=300, format='pdf', transparent=True)
+    plt.draw()
+    plt.show()
 
 def plot_results(trackers, dataset, report_name, merge_results=False,
                  plot_types=('success'), force_evaluation=False, **kwargs):
@@ -251,6 +398,8 @@ def plot_results(trackers, dataset, report_name, merge_results=False,
 
         success_plot_opts = {'plot_type': 'success', 'legend_loc': 'lower left', 'xlabel': 'Overlap threshold',
                              'ylabel': 'Overlap Precision [%]', 'xlim': (0, 1.0), 'ylim': (0, 100), 'title': 'Success plot'}
+        success_plot_opts = {'plot_type': 'success', 'legend_loc': 'outside right upper', 'xlabel': 'Overlap threshold',
+                             'ylabel': 'Overlap Precision [%]', 'xlim': (0, 1.0), 'ylim': (0, 100)}
         plot_draw_save(auc_curve, threshold_set_overlap, auc, tracker_names, plot_draw_styles, result_plot_path, success_plot_opts)
 
     # ********************************  Precision Plot **************************************

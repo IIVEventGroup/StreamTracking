@@ -23,7 +23,6 @@ def parameters():
         'kys_fe240':0.04*1e6,
         'rts_rts50':0.033*1e6,
         'tomp_tomp50':0.035*1e6,
-
                           }
     params.sim_disturb = 0.0 # disturbance around runtime
 

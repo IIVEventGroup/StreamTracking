@@ -3,9 +3,9 @@ from pytracking.features.net_wrappers import NetWithBackbone, NetWrapper
 
 def parameters():
     params = TrackerParams()
-    params.id = 14
+    params.id = 15
     """Standard Setting Part"""
-    """ id:14 is designed to simulate the running of id:18 to reproduce the results"""
+    """ id:15 is designed to simulate the running of slower runtime 10fps"""
     # Hardware
     params.convert_time = False
     params.sim = True
@@ -28,8 +28,9 @@ def parameters():
         'ostrack_trial6_ostrack256_aug1':16*1e3,
         'ostrack_trial8_ostrack256':16*1e3,
         'ostrack_trial9_ostrack256':16*1e3,
-        'ostrack_baseline':16*1e3,
-        'ostrack_aug':16*1e3,
+        'ostrack_baseline':100*1e3,
+        'ostrack_aug':100*1e3,
+        'ostrack_aug_2x':100*1e3,
         'stark_s_baseline':16*1e3,
                           }
     
@@ -51,8 +52,9 @@ def parameters():
         'ostrack_trial6_ostrack256_aug1':10*1e3,
         'ostrack_trial8_ostrack256':10*1e3,
         'ostrack_trial9_ostrack256':10*1e3,
-        'ostrack_baseline':10*1e3,
-        'ostrack_aug':10*1e3,
+        'ostrack_baseline':100*1e3,
+        'ostrack_aug':100*1e3,
+        'ostrack_aug_2x':100*1e3,
         'stark_s_baseline':25*1e3,
                           }
     params.sim_disturb = 0.0 # disturbance around runtime

@@ -32,6 +32,7 @@ class ESOT500DatasetStream(BaseDataset):
         anno_path = '{}/{}/{}/groundtruth.txt'.format(self.base_path,'500', sequence_name)
 
         ground_truth_rect = load_text(str(anno_path), delimiter=',', dtype=np.float64)
+        # ground_truth_rect = ground_truth_rect[::25]
 
         frames_path = '{}/{}/{}'.format(self.base_path,'500', sequence_name,'VoxelGridComplex')
         frame_list = sorted(os.listdir(frames_path))

@@ -9,24 +9,20 @@
 
 # CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment.py offline_evaluation offline_ultimate
 
-# CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_3
-# CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_4
-# CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_5
-# CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_6
-# CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_7
 # CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_18
-CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_14
+CUDA_VISIBLE_DEVICES=0 python pytracking/run_experiment_streaming.py exp_streaming streaming_34
+CUDA_VISIBLE_DEVICES=0 python pytracking/run_experiment_streaming.py exp_streaming streaming_35
+
 # CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_egt
 # CUDA_VISIBLE_DEVICES=2 python pytracking/run_experiment_streaming.py exp_streaming streaming_egt_3
 
 # CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_3
 
-# CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_4
-# CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_5
-# CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_6
-# CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_7
 # CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_18
-CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_14
+CUDA_VISIBLE_DEVICES=0 python eval/streaming_eval_v3.py exp_streaming streaming_34
+CUDA_VISIBLE_DEVICES=0 python eval/streaming_eval_v3.py exp_streaming streaming_35
+
+
 # CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_egt
 # CUDA_VISIBLE_DEVICES=2 python eval/streaming_eval_v3.py exp_streaming streaming_egt_3
 

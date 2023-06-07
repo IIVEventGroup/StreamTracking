@@ -23,7 +23,7 @@ def convert_event_img_aedat(events, style, with_img_return = False):
         dvs_img[events[:]['y'], events[:]['x']] = 1
         # dvs_img[events[:]['y'], events[:]['x']] = 255
         dvs_img[events[:]['y'], events[:]['x'], events[:]['polarity'] * 2] = 255
-    if style == 'FE240': 
+    elif style == 'FE240': 
         dvs_img = np.ones((260,346,3), dtype=np.uint8)*0
         dvs_img[events[:]['y'], events[:]['x']] = 1
         dvs_img[events[:]['y'], events[:]['x']] = 255
@@ -69,8 +69,8 @@ def convert_event_img_aedat(events, style, with_img_return = False):
         event_img_pil = transform(voxel_complex)
         # event_img_pil.save('debug/test.jpg')
         event_img_array = np.array(event_img_pil)
-        event_img = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
-        return event_img # (3, H, W)
+        # event_img_array = cv2.cvtColor(event_img_array,cv2.COLOR_RGB2BGR)
+        return event_img_array # (3, H, W)
 
     elif style == 'TimeSurface':
         raise NotImplementedError
